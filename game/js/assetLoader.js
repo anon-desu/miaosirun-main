@@ -100,7 +100,7 @@ const randomBgIndex = Math.floor(Math.random() * 4) + 1;
 const isMobile = checkIsMobile();
 const backgroundPath = isMobile
   ? `assets/images/backgrounds/phone_bg${randomBgIndex}.png` // 手机端背景路径
-  : `assets/images/backgrounds/pc_bg${randomBgIndex}.png`;     // 电脑端背景路径
+  : `assets/images/backgrounds/pc_bg${randomBgIndex}.jpg`;     // 电脑端背景路径
 
 const ASSET_MANIFEST = {
   background:    backgroundPath,
