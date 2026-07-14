@@ -59,6 +59,8 @@ class Game {
 
     document.addEventListener('touchstart', e => this._onTouch(e), { passive: false });
     document.addEventListener('mousedown',  e => this._onMouse(e));
+    // 【新增】监听键盘按键，实现电脑端上下方向键操作
+    document.addEventListener('keydown', e => this._onKeyDown(e));
   }
 
   _getDefaultStats() {
@@ -133,7 +135,8 @@ class Game {
 
     if (this.stats.hasShieldRegen) {
       this.stats.shieldTimer += dt;
-      if (this.stats.shieldTimer >= 30000) { 
+      // 【优化数值】护盾自动生成间隔调整为 40 秒，防止堆叠过多免疫伤害
+      if (this.stats.shieldTimer >= 40000) { 
         this.stats.shieldTimer = 0;
         this.stats.shield += 1;
         UI.spawnComboAnim(this.canvas.width / 2, this.canvas.height / 2, `🛡️护盾 +1`, '#00f0ff');
@@ -196,11 +199,20 @@ class Game {
     if (this.player.isDead()) this._gameOver();
   }
 
+  // --- 【优化点】怪物生成及电脑端速度等比缩放 ---
   _spawnMonster() {
     let lane = Math.random() < 0.5 ? 'top' : 'bottom';
     if (this.boss && this.boss.lane === lane) return;
     
-    const speed = (0.10 + Math.random() * 0.07) * this._speedMultiplier; 
+    // 基础绝对像素速度
+    const baseSpeed = (0.10 + Math.random() * 0.07) * this._speedMultiplier; 
+    
+    // 速度缩放：以 1000 像素宽度的屏幕为基准
+    // 使得怪物在电脑宽屏（例如1920px）上运动更快，保证怪物从屏幕右侧飞到左侧的时间与手机上一致
+    const referenceWidth = 1000;
+    const scale = this.canvas.width / referenceWidth;
+    const speed = baseSpeed * scale;
+
     const opts = { lane, canvasW: this.canvas.width, canvasH: this.canvas.height, speed };
     this.monsters.push(Math.random() < 0.55 ? new NormalMonster(opts) : new CloudMonster(opts));
   }
@@ -229,7 +241,6 @@ class Game {
     }
   }
 
-  // --- 【修改点】核心判定重构，解决攻击 Boss 没有动画和打不到小怪的问题 ---
   _handleTap(cx, cy) {
     if (!this._running || this._paused) return;
     const cw = this.canvas.width;
@@ -275,10 +286,10 @@ class Game {
 
       // 计算伤害
       let dmg = this.stats.clickDamage;
-      if (this.stats.frenzy && this.combo >= 30) dmg += 3;
+      if (this.stats.frenzy && this.combo >= 30) dmg += 2; // 【数值微调】狂热加成调整为+2，更合理
       if (this.stats.comboDamage) dmg += Math.floor(this.combo / 10);
       let isCrit = this.stats.critChance > 0 && Math.random() < this.stats.critChance;
-      if (isCrit) dmg *= 3;
+      if (isCrit) dmg = Math.floor(dmg * 2.5); // 【数值微调】暴击伤害倍数调整为 2.5 倍，防止秒杀感过强
 
       // 对 Boss 造成伤害
       this.boss.click(); 
@@ -338,5 +349,24 @@ class Game {
   _onMouse(e) {
     if (!this._running || this._paused) return;
     this._handleTap(e.clientX, e.clientY);
+  }
+
+  // 【新增】处理方向键按键事件
+  _onKeyDown(e) {
+    if (!this._running || this._paused) return;
+    
+    if (e.key === 'ArrowUp') {
+      e.preventDefault(); // 防止网页默认滚动
+      // 模拟上通道点击
+      const cx = (this.player.x || 120) + 100;
+      const cy = this.canvas.height * 0.25;
+      this._handleTap(cx, cy);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault(); // 防止网页默认滚动
+      // 模拟下通道点击
+      const cx = (this.player.x || 120) + 100;
+      const cy = this.canvas.height * 0.75;
+      this._handleTap(cx, cy);
+    }
   }
 }
