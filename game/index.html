@@ -32,13 +32,20 @@
   </style>
 </head>
 <body>
+  <!-- 【重要修复】补全被遗漏的横屏提示遮罩 HTML 节点，解决竖屏无法拦截的问题 -->
+  <div id="rotate-tip">
+    <div class="icon">🔄</div>
+    <h2 style="margin: 10px 0 5px 0; font-size: 1.5rem; color: #fff;">请旋转设备至横屏</h2>
+    <p style="margin: 0; font-size: 0.95rem; color: #aaa;">本游戏仅支持横屏游玩，以获得最佳体验</p>
+  </div>
+
   <div id="app">
     <div id="screen-start" class="screen active">
       <div class="start-content">
         <h1 class="game-title">阿祖喵斯快跑</h1>
         <p class="game-subtitle">AZU-NYAS RUN</p>
         
-        <!-- 【新增】选人界面 (使用内联样式，不破坏原有CSS) -->
+        <!-- 选人界面 -->
         <div id="char-select-container" style="display: none; align-items: center; justify-content: center; gap: 20px; margin-bottom: 30px;">
           <button id="btn-prev-char" style="background: transparent; border: 2px solid #00f0ff; color: #00f0ff; font-size: 24px; border-radius: 8px; cursor: pointer; padding: 5px 15px; font-weight: bold; box-shadow: 0 0 10px rgba(0,240,255,0.3);">&lt;</button>
           
@@ -122,8 +129,7 @@
 
   <script>
     /**
-     * 【新增】选人界面初始化逻辑
-     * 这个函数会在 assetLoader.js 彻底加载完资源后被自动调用
+     * 选人界面初始化逻辑
      */
     window.initCharSelectUI = function() {
       const validPlayers = AssetLoader.getValidPlayers();
@@ -137,11 +143,9 @@
       let currentIndex = 0;
       window.selectedPlayerKey = validPlayers[currentIndex]; // 暴露给 game.js
       
-      // 显示 UI 并应用第一张图
       imgPreview.src = AssetLoader.get(validPlayers[currentIndex]).src || 'assets/images/player/player.png';
       container.style.display = 'flex';
 
-      // 绑定左右切换事件
       btnPrev.addEventListener('click', () => {
         currentIndex = (currentIndex - 1 + validPlayers.length) % validPlayers.length;
         window.selectedPlayerKey = validPlayers[currentIndex];
@@ -155,14 +159,15 @@
       });
     };
 
-/**
-     * 【优化】屏幕方向管理逻辑（彻底解决手机浏览器“电脑模式”下的判定失效）
+    /**
+     * 优化：屏幕方向管理逻辑（直接基于物理尺寸宽高判定，彻底解决物理竖屏时被电脑模式欺骗的问题）
      */
     (function() {
       const tip = document.getElementById('rotate-tip');
 
       function checkOrientation() {
-        // 直接基于视口物理宽高比检测：高度大于宽度，即物理上处于竖屏，强制拦截并显示旋转提示
+        if (!tip) return;
+        // 高度大于宽度，即为物理竖屏，直接强行显示遮罩，无法绕过
         if (window.innerHeight > window.innerWidth) {
           tip.classList.add('show');
         } else {
@@ -173,17 +178,16 @@
         }
       }
 
-      // 绑定 resize 与 orientationchange，确保视口发生任何变动时自适应重置
       window.addEventListener('resize', checkOrientation);
       window.addEventListener('orientationchange', checkOrientation);
-      checkOrientation(); // 首次加载初始化
+      checkOrientation(); // 初始化执行
 
       if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock('landscape').catch(() => {
           console.log("浏览器不支持或未开启全屏，无法锁定方向");
         });
       }
-      })();
+    })();
   </script>
 </body>
 </html>
