@@ -155,37 +155,35 @@
       });
     };
 
-    /**
-     * 原有：屏幕方向管理逻辑
+/**
+     * 【优化】屏幕方向管理逻辑（彻底解决手机浏览器“电脑模式”下的判定失效）
      */
     (function() {
       const tip = document.getElementById('rotate-tip');
-      const landscapeQuery = window.matchMedia("(orientation: landscape)");
 
-      function handleOrientationChange(mql) {
-        if (mql.matches) {
+      function checkOrientation() {
+        // 直接基于视口物理宽高比检测：高度大于宽度，即物理上处于竖屏，强制拦截并显示旋转提示
+        if (window.innerHeight > window.innerWidth) {
+          tip.classList.add('show');
+        } else {
           tip.classList.remove('show');
           if (window.gameInstance && typeof window.gameInstance._resize === 'function') {
             window.gameInstance._resize();
           }
-        } else {
-          tip.classList.add('show');
         }
       }
 
-      if (landscapeQuery.addEventListener) {
-        landscapeQuery.addEventListener("change", handleOrientationChange);
-      } else {
-        landscapeQuery.addListener(handleOrientationChange);
-      }
-      handleOrientationChange(landscapeQuery);
+      // 绑定 resize 与 orientationchange，确保视口发生任何变动时自适应重置
+      window.addEventListener('resize', checkOrientation);
+      window.addEventListener('orientationchange', checkOrientation);
+      checkOrientation(); // 首次加载初始化
 
       if (screen.orientation && screen.orientation.lock) {
         screen.orientation.lock('landscape').catch(() => {
           console.log("浏览器不支持或未开启全屏，无法锁定方向");
         });
       }
-    })();
+      })();
   </script>
 </body>
 </html>
