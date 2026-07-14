@@ -249,10 +249,10 @@ class Game {
   _handleTap(clientX, clientY) {
     if (!this._running || this._paused) return;
     
-    // 1. 获取 Canvas 在窗口中的实际渲染大小包围盒
+    // 1. 获取 Canvas 实际渲染包围盒，用于物理点击位置精密转换
     const rect = this.canvas.getBoundingClientRect();
     
-    // 2. 将 clientX/clientY 映射至 Canvas 内部真实分辨率下的 cx/cy，确保各种模式缩放时均可精准点击
+    // 2. 将 clientX/clientY 映射至 Canvas 内部真实坐标 cx/cy (彻底解决移动端“电脑模式”及页面缩放引起的坐标错位问题)
     const cx = ((clientX - rect.left) / rect.width) * this.canvas.width;
     const cy = ((clientY - rect.top) / rect.height) * this.canvas.height;
 
@@ -297,16 +297,16 @@ class Game {
       // 【优先级2：面前没有小怪了，并且 Boss 在此泳道，则攻击 Boss】
       this.player.bossHit(lane); // 调用专门的 Boss 连击抖动动画
 
-      // --- 【伤害大幅强化】计算对 Boss 伤害 ---
+      // --- 【伤害重构计算】对 Boss 伤害大幅增强 ---
       let dmg = this.stats.clickDamage;
       
-      // 狂热状态判定：连击达到 20 即可触发，额外伤害大幅增加到 +5
+      // 狂热状态判定：连击达到 20 即可触发，额外伤害增加到 +5
       if (this.stats.frenzy && this.combo >= 20) dmg += 5;
       
-      // 连击之刃判定：从每 10 连击折算 1 伤害，下调至每 8 连击折算 1 伤害
+      // 连击之刃判定：从 10 连击折算 1 伤害下调至 8 连击折算 1 伤害，成长速度更快
       if (this.stats.comboDamage) dmg += Math.floor(this.combo / 8);
       
-      // 暴击判定：触发暴击时倍数上调至 3.5 倍极限输出
+      // 暴击判定：触发暴击时倍数上调至 3.5 倍
       let isCrit = this.stats.critChance > 0 && Math.random() < this.stats.critChance;
       if (isCrit) dmg = Math.floor(dmg * 3.5);
 
@@ -314,7 +314,7 @@ class Game {
       this.boss.click(); 
       if (dmg > 1 && this.boss.hp > 0) this.boss.hp -= (dmg - 1);
       
-      // 弱点击破（斩杀）：斩杀线由低于 15% 上调至最高 30%，后期快速秒杀高血量 Boss
+      // 弱点击破（斩杀）：斩杀线由原本的低于 15% 上调至最高 30%
       if (this.stats.execute > 0 && (this.boss.hp / this.boss.maxHp) <= this.stats.execute) this.boss.hp = 0;
       if (this.boss.hp <= 0) this.boss.killed = true;
 
@@ -331,7 +331,7 @@ class Game {
     }
   }
 
-  // --- 【高对比遮罩】绘制顶部阴影以防止文字/血量与背景颜色冲突 ---
+  // --- 【高对比双色气泡】绘制顶部高反差气泡背板，彻底解决白底吃文字、暗底吃黑心的问题 ---
   _draw() {
     const ctx = this.ctx; const cw = this.canvas.width; const ch = this.canvas.height;
     ctx.save();
@@ -342,19 +342,36 @@ class Game {
     if (this.boss) this.boss.draw(ctx);
     this.player.draw(ctx);
 
-    // 【新增】绘制顶部半透明渐变黑羽化遮罩条（完美消除白/深色背景导致爱心和数字看不清的问题）
-    const grad = ctx.createLinearGradient(0, 0, 0, 110);
-    grad.addColorStop(0, 'rgba(0, 0, 0, 0.65)'); // 最顶部具有较高的透明黑，压暗背景
-    grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.3)'); // 渐变过渡
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');     // 边缘完全透明，不干扰画面
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, cw, 110);
+    // ==========================================
+    // 【新增设计】为生命值（左上角）和连击/得分（右上角）提供高反差双色气泡背板
+    
+    // 1. 生命值（Hearts）气泡：使用高透亮色气泡，让黑色的心形符号（🖤）能够清晰凸显出来
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(15, 12, 130, 36, 18);
+    } else {
+      ctx.rect(15, 12, 130, 36);
+    }
+    ctx.fill();
 
+    // 2. 连击/分数（Combo）气泡：使用高透暗色气泡，让白色/青色的连击字符能够清晰凸显
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(cw - 195, 12, 180, 36, 18);
+    } else {
+      ctx.rect(cw - 195, 12, 180, 36);
+    }
+    ctx.fill();
+    // ==========================================
+
+    // 调用常规 UI 绘制
     UI.draw(ctx, { cw, ch, score: this.score, combo: this.combo, hp: this.player.hp, maxHp: this.player.maxHp, boss: this.boss });
     
     if (this.stats.shield > 0) {
       ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 18px Orbitron';
-      // 增加黑色文字描边，防止在明亮天空下看不清
+      // 给护盾文字增加黑色描边，确保在亮色背景下仍然具有良好的可视性
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 3;
       ctx.strokeText(`🛡️ SHIELD: ${this.stats.shield}`, 20, 85);
