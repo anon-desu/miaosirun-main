@@ -59,7 +59,7 @@ class Game {
 
     document.addEventListener('touchstart', e => this._onTouch(e), { passive: false });
     document.addEventListener('mousedown',  e => this._onMouse(e));
-    // 【新增】监听键盘按键，实现电脑端上下方向键操作
+    // 监听键盘按键，实现电脑端上下方向键操作
     document.addEventListener('keydown', e => this._onKeyDown(e));
   }
 
@@ -135,8 +135,8 @@ class Game {
 
     if (this.stats.hasShieldRegen) {
       this.stats.shieldTimer += dt;
-      // 【优化数值】护盾自动生成间隔调整为 40 秒，防止堆叠过多免疫伤害
-      if (this.stats.shieldTimer >= 40000) { 
+      // 【数值优化】防御系 Buff 生成间隔缩短至 25 秒，确保高连击不轻易中断
+      if (this.stats.shieldTimer >= 25000) { 
         this.stats.shieldTimer = 0;
         this.stats.shield += 1;
         UI.spawnComboAnim(this.canvas.width / 2, this.canvas.height / 2, `🛡️护盾 +1`, '#00f0ff');
@@ -199,16 +199,13 @@ class Game {
     if (this.player.isDead()) this._gameOver();
   }
 
-  // --- 【优化点】怪物生成及电脑端速度等比缩放 ---
   _spawnMonster() {
     let lane = Math.random() < 0.5 ? 'top' : 'bottom';
     if (this.boss && this.boss.lane === lane) return;
     
-    // 基础绝对像素速度
     const baseSpeed = (0.10 + Math.random() * 0.07) * this._speedMultiplier; 
     
-    // 速度缩放：以 1000 像素宽度的屏幕为基准
-    // 使得怪物在电脑宽屏（例如1920px）上运动更快，保证怪物从屏幕右侧飞到左侧的时间与手机上一致
+    // 电脑端与手机端的等比速度缩放
     const referenceWidth = 1000;
     const scale = this.canvas.width / referenceWidth;
     const speed = baseSpeed * scale;
@@ -284,16 +281,24 @@ class Game {
       // 【优先级2：面前没有小怪了，并且 Boss 在此泳道，则攻击 Boss】
       this.player.bossHit(lane); // 调用专门的 Boss 连击抖动动画
 
-      // 计算伤害
+      // --- 【数值重构】计算对 Boss 伤害 ---
       let dmg = this.stats.clickDamage;
-      if (this.stats.frenzy && this.combo >= 30) dmg += 2; // 【数值微调】狂热加成调整为+2，更合理
-      if (this.stats.comboDamage) dmg += Math.floor(this.combo / 10);
+      
+      // 狂热状态判定：连击达到 20 即可，额外伤害大幅增加到 +5
+      if (this.stats.frenzy && this.combo >= 20) dmg += 5;
+      
+      // 连击之刃判定：从 10 连击折算 1 伤害下调至 8 连击折算 1 伤害，成长速度更快
+      if (this.stats.comboDamage) dmg += Math.floor(this.combo / 8);
+      
+      // 暴击判定：触发暴击时倍数上调至 3.5 倍
       let isCrit = this.stats.critChance > 0 && Math.random() < this.stats.critChance;
-      if (isCrit) dmg = Math.floor(dmg * 2.5); // 【数值微调】暴击伤害倍数调整为 2.5 倍，防止秒杀感过强
+      if (isCrit) dmg = Math.floor(dmg * 3.5);
 
       // 对 Boss 造成伤害
       this.boss.click(); 
       if (dmg > 1 && this.boss.hp > 0) this.boss.hp -= (dmg - 1);
+      
+      // 弱点击破（斩杀）：斩杀线由原本的低于 15% 上调至最高 30%，后期可以直接秒杀高血量 Boss
       if (this.stats.execute > 0 && (this.boss.hp / this.boss.maxHp) <= this.stats.execute) this.boss.hp = 0;
       if (this.boss.hp <= 0) this.boss.killed = true;
 
@@ -351,19 +356,16 @@ class Game {
     this._handleTap(e.clientX, e.clientY);
   }
 
-  // 【新增】处理方向键按键事件
   _onKeyDown(e) {
     if (!this._running || this._paused) return;
     
     if (e.key === 'ArrowUp') {
-      e.preventDefault(); // 防止网页默认滚动
-      // 模拟上通道点击
+      e.preventDefault(); 
       const cx = (this.player.x || 120) + 100;
       const cy = this.canvas.height * 0.25;
       this._handleTap(cx, cy);
     } else if (e.key === 'ArrowDown') {
-      e.preventDefault(); // 防止网页默认滚动
-      // 模拟下通道点击
+      e.preventDefault(); 
       const cx = (this.player.x || 120) + 100;
       const cy = this.canvas.height * 0.75;
       this._handleTap(cx, cy);
