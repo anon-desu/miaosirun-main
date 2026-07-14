@@ -76,10 +76,14 @@ const UI = (() => {
 
     /* ── 生命值（左上角，用❤图标）── */
     ctx.save();
+    // 【重要修复】添加显式的霓虹红心填充色及霓虹背光发光特效
+    ctx.fillStyle = '#ff2b55';       // 强烈的霓虹红色
+    ctx.shadowColor = '#ff2b55';     // 红色外发光效果
+    ctx.shadowBlur = 12;             // 阴影模糊半径，增加发光感
     ctx.font = '22px sans-serif';
     ctx.textAlign = 'left';
     for (let i = 0; i < maxHp; i++) {
-      ctx.globalAlpha = i < hp ? 1 : 0.2;
+      ctx.globalAlpha = i < hp ? 1 : 0.2; // 扣血后降低透明度作为空血效果
       ctx.fillText('❤', 16 + i * 30, 38);
     }
     ctx.globalAlpha = 1;
