@@ -1,5 +1,6 @@
 /**
  * game.js
+ * 核心逻辑：关卡控制、难度平滑递增、输入映射（触控/鼠标/键盘）、等比速度适配与碰撞判定
  */
 
 // --- 音频管理对象 ---
@@ -30,12 +31,15 @@ class Game {
     this.canvas = canvas;
     this.ctx    = canvas.getContext('2d');
 
+    // 【防缩放】禁用 Canvas 默认页面触碰手势（双击缩放、手势滑动等），解决电脑模式下触控带来的缩放异常
+    this.canvas.style.touchAction = 'none';
+
     this._resize();
     window.addEventListener('resize', () => this._resize());
 
-    // 默认给个占位，真正的实例化在 start() 里
+    // 默认实例化，真实初始化在 start() 中调用
     this.player   = new Player(canvas);
-    this.monsters =[];
+    this.monsters = [];
     this.boss     = null;
 
     this.score    = 0;
@@ -57,6 +61,7 @@ class Game {
 
     this.stats = this._getDefaultStats();
 
+    // 绑定多端输入处理器
     document.addEventListener('touchstart', e => this._onTouch(e), { passive: false });
     document.addEventListener('mousedown',  e => this._onMouse(e));
     // 监听键盘按键，实现电脑端上下方向键操作
@@ -82,7 +87,7 @@ class Game {
 
   start() {
     this.score = 0; this.combo = 0; this.maxCombo = 0;
-    this.monsters =[]; this.boss = null;
+    this.monsters = []; this.boss = null;
     this._spawnTimer = 0; this._spawnInterval = 2200; this._bossTimer = 0;
     this._diffTimer = 0; this._speedMultiplier = 1.0; this._tapFlash = null;
     
@@ -135,7 +140,7 @@ class Game {
 
     if (this.stats.hasShieldRegen) {
       this.stats.shieldTimer += dt;
-      // 【数值优化】防御系 Buff 生成间隔缩短至 25 秒，确保高连击不轻易中断
+      // 【数值优化】防御系 Buff 生成间隔调整为 25 秒，提高连击安全性
       if (this.stats.shieldTimer >= 25000) { 
         this.stats.shieldTimer = 0;
         this.stats.shield += 1;
@@ -199,13 +204,15 @@ class Game {
     if (this.player.isDead()) this._gameOver();
   }
 
+  // --- 【等比优化】小怪生成时根据屏幕物理宽度等比缩放位移速度 ---
   _spawnMonster() {
     let lane = Math.random() < 0.5 ? 'top' : 'bottom';
     if (this.boss && this.boss.lane === lane) return;
     
+    // 基础绝对像素速度
     const baseSpeed = (0.10 + Math.random() * 0.07) * this._speedMultiplier; 
     
-    // 电脑端与手机端的等比速度缩放
+    // 速度缩放：以 1000 像素宽度的屏幕为基准，消除电脑宽屏由于跑道物理距离变长带来的低难度差异
     const referenceWidth = 1000;
     const scale = this.canvas.width / referenceWidth;
     const speed = baseSpeed * scale;
@@ -238,8 +245,17 @@ class Game {
     }
   }
 
-  _handleTap(cx, cy) {
+  // --- 【精细换算】重构判定函数，解决电脑模式下缩放引起的点击错位问题 ---
+  _handleTap(clientX, clientY) {
     if (!this._running || this._paused) return;
+    
+    // 1. 获取 Canvas 在窗口中的实际渲染大小包围盒
+    const rect = this.canvas.getBoundingClientRect();
+    
+    // 2. 将 clientX/clientY 映射至 Canvas 内部真实分辨率下的 cx/cy，确保各种模式缩放时均可精准点击
+    const cx = ((clientX - rect.left) / rect.width) * this.canvas.width;
+    const cy = ((clientY - rect.top) / rect.height) * this.canvas.height;
+
     const cw = this.canvas.width;
     const ch = this.canvas.height;
     const lane = cy < ch / 2 ? 'top' : 'bottom';
@@ -247,17 +263,17 @@ class Game {
     // 触发点击位置的闪烁特效
     this._tapFlash = { lane, timer: 200 };
 
-    // 1. 获取该泳道存活的小怪，并按距离(x坐标)从小到大排序
+    // 3. 获取该泳道存活的小怪，并按距离(x坐标)从小到大排序
     const inLaneMonsters = this.monsters.filter(m => m.lane === lane && !m.dead).sort((a, b) => a.x - b.x);
     const closestMonster = inLaneMonsters.length > 0 ? inLaneMonsters[0] : null;
     
-    // 2. 计算玩家的攻击范围
+    // 4. 计算玩家的攻击范围
     const hitRange = (this.player.x || 120) + 160 + this.stats.hitRangeBonus;
     
-    // 3. 判断是否能打到小怪 (有小怪且在攻击范围内)
+    // 5. 判断是否能打到小怪 (有小怪且在攻击范围内)
     const canHitMonster = closestMonster && closestMonster.x < hitRange;
     
-    // 4. 判断当前点击泳道是否可以攻击 Boss
+    // 6. 判断当前点击泳道是否可以攻击 Boss
     const isBossVulnerable = this.boss && !this.boss._entering && this.boss.isInLane(lane);
 
     // --- 核心逻辑：判定优先级 ---
@@ -281,16 +297,16 @@ class Game {
       // 【优先级2：面前没有小怪了，并且 Boss 在此泳道，则攻击 Boss】
       this.player.bossHit(lane); // 调用专门的 Boss 连击抖动动画
 
-      // --- 【数值重构】计算对 Boss 伤害 ---
+      // --- 【伤害大幅强化】计算对 Boss 伤害 ---
       let dmg = this.stats.clickDamage;
       
-      // 狂热状态判定：连击达到 20 即可，额外伤害大幅增加到 +5
+      // 狂热状态判定：连击达到 20 即可触发，额外伤害大幅增加到 +5
       if (this.stats.frenzy && this.combo >= 20) dmg += 5;
       
-      // 连击之刃判定：从 10 连击折算 1 伤害下调至 8 连击折算 1 伤害，成长速度更快
+      // 连击之刃判定：从每 10 连击折算 1 伤害，下调至每 8 连击折算 1 伤害
       if (this.stats.comboDamage) dmg += Math.floor(this.combo / 8);
       
-      // 暴击判定：触发暴击时倍数上调至 3.5 倍
+      // 暴击判定：触发暴击时倍数上调至 3.5 倍极限输出
       let isCrit = this.stats.critChance > 0 && Math.random() < this.stats.critChance;
       if (isCrit) dmg = Math.floor(dmg * 3.5);
 
@@ -298,7 +314,7 @@ class Game {
       this.boss.click(); 
       if (dmg > 1 && this.boss.hp > 0) this.boss.hp -= (dmg - 1);
       
-      // 弱点击破（斩杀）：斩杀线由原本的低于 15% 上调至最高 30%，后期可以直接秒杀高血量 Boss
+      // 弱点击破（斩杀）：斩杀线由低于 15% 上调至最高 30%，后期快速秒杀高血量 Boss
       if (this.stats.execute > 0 && (this.boss.hp / this.boss.maxHp) <= this.stats.execute) this.boss.hp = 0;
       if (this.boss.hp <= 0) this.boss.killed = true;
 
@@ -315,6 +331,7 @@ class Game {
     }
   }
 
+  // --- 【高对比遮罩】绘制顶部阴影以防止文字/血量与背景颜色冲突 ---
   _draw() {
     const ctx = this.ctx; const cw = this.canvas.width; const ch = this.canvas.height;
     ctx.save();
@@ -325,9 +342,22 @@ class Game {
     if (this.boss) this.boss.draw(ctx);
     this.player.draw(ctx);
 
+    // 【新增】绘制顶部半透明渐变黑羽化遮罩条（完美消除白/深色背景导致爱心和数字看不清的问题）
+    const grad = ctx.createLinearGradient(0, 0, 0, 110);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.65)'); // 最顶部具有较高的透明黑，压暗背景
+    grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.3)'); // 渐变过渡
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');     // 边缘完全透明，不干扰画面
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cw, 110);
+
     UI.draw(ctx, { cw, ch, score: this.score, combo: this.combo, hp: this.player.hp, maxHp: this.player.maxHp, boss: this.boss });
+    
     if (this.stats.shield > 0) {
       ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 18px Orbitron';
+      // 增加黑色文字描边，防止在明亮天空下看不清
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(`🛡️ SHIELD: ${this.stats.shield}`, 20, 85);
       ctx.fillText(`🛡️ SHIELD: ${this.stats.shield}`, 20, 85); 
     }
     ctx.restore();
@@ -360,12 +390,12 @@ class Game {
     if (!this._running || this._paused) return;
     
     if (e.key === 'ArrowUp') {
-      e.preventDefault(); 
+      e.preventDefault(); // 阻止浏览器上下滚动
       const cx = (this.player.x || 120) + 100;
       const cy = this.canvas.height * 0.25;
       this._handleTap(cx, cy);
     } else if (e.key === 'ArrowDown') {
-      e.preventDefault(); 
+      e.preventDefault(); // 阻止浏览器上下滚动
       const cx = (this.player.x || 120) + 100;
       const cy = this.canvas.height * 0.75;
       this._handleTap(cx, cy);
