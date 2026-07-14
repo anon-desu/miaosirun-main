@@ -5,10 +5,10 @@
 
 const AssetLoader = (() => {
   const _cache = {};
-  const _isReal = {}; // 【新增】记录该图片是否真实存在
+  const _isReal = {}; // 记录该图片是否真实存在
 
   function load(manifest) {
-    // 【新增】自动将 player1 到 player20 塞入探测清单
+    // 自动将 player1 到 player20 塞入探测清单
     for(let i = 1; i <= 20; i++) {
       if(!manifest[`player${i}`]) {
         manifest[`player${i}`] = `assets/images/player/player${i}.png`;
@@ -35,7 +35,7 @@ const AssetLoader = (() => {
     });
 
     return Promise.all(promises).then(() => {
-       // 【新增】加载完成后，调用我们在 index.html 中定义的 UI 初始化方法
+       // 加载完成后，调用我们在 index.html 中定义的 UI 初始化方法
        if(typeof window.initCharSelectUI === 'function') {
          window.initCharSelectUI();
        }
@@ -48,7 +48,7 @@ const AssetLoader = (() => {
 
   function has(key) { return !!_cache[key]; }
 
-  // 【新增】返回所有真实存在的角色 ID
+  // 返回所有真实存在的角色 ID
   function getValidPlayers() {
     let players = [];
     if (_isReal['player']) players.push('player');
@@ -79,13 +79,32 @@ const AssetLoader = (() => {
   return { load, get, has, getValidPlayers };
 })();
 
+/**
+ * 【新增】设备识别函数
+ * 判断当前是否为移动端（手机或平板）
+ */
+const checkIsMobile = () => {
+  const ua = navigator.userAgent;
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  
+  // 针对 iPadOS 等默认请求电脑端网页的移动设备进行额外判定
+  const isMacTouch = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  
+  return isMobileUA || isMacTouch;
+};
+
 // 生成 1 到 4 的随机整数
 const randomBgIndex = Math.floor(Math.random() * 4) + 1;
 
+// 根据设备类型，决定加载手机专属背景还是电脑专属背景
+const isMobile = checkIsMobile();
+const backgroundPath = isMobile
+  ? `assets/images/backgrounds/phone_bg${randomBgIndex}.png` // 手机端背景路径
+  : `assets/images/backgrounds/pc_bg${randomBgIndex}.png`;     // 电脑端背景路径
+
 const ASSET_MANIFEST = {
-  background:    `assets/images/backgrounds/bg${randomBgIndex}.png`,
+  background:    backgroundPath,
   monster_normal:'assets/images/monsters/normal.png',
   monster_cloud: 'assets/images/monsters/cloud.png',
   monster_boss:  'assets/images/monsters/boss.png',
-  // player 的路径探测已在上面的 load 函数内自动进行
 };
