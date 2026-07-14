@@ -5,40 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>阿祖喵斯快跑</title>
   <link rel="stylesheet" href="css/style.css" />
-  <style>
-    /* 横屏提示遮罩（竖屏时显示） */
-    #rotate-tip {
-      display: none;
-      position: fixed; 
-      inset: 0; 
-      z-index: 9999;
-      background: #0a0a14;
-      flex-direction: column;
-      align-items: center; 
-      justify-content: center;
-      gap: 20px; 
-      color: #e8e8ff; 
-      font-family: sans-serif;
-      text-align: center;
-      pointer-events: all;
-    }
-    #rotate-tip.show { display: flex; }
-    #rotate-tip .icon { font-size: 60px; animation: spin 1.5s ease-in-out infinite alternate; }
-    @keyframes spin {
-      from { transform: rotate(-30deg); }
-      to   { transform: rotate(30deg);  }
-    }
-    #rotate-tip p { font-size: 1.1rem; color: #aaa; }
-  </style>
 </head>
 <body>
-  <!-- 【重要修复】补全被遗漏的横屏提示遮罩 HTML 节点，解决竖屏无法拦截的问题 -->
-  <div id="rotate-tip">
-    <div class="icon">🔄</div>
-    <h2 style="margin: 10px 0 5px 0; font-size: 1.5rem; color: #fff;">请旋转设备至横屏</h2>
-    <p style="margin: 0; font-size: 0.95rem; color: #aaa;">本游戏仅支持横屏游玩，以获得最佳体验</p>
-  </div>
-
   <div id="app">
     <div id="screen-start" class="screen active">
       <div class="start-content">
@@ -129,7 +97,8 @@
 
   <script>
     /**
-     * 选人界面初始化逻辑
+     * 【新增】选人界面初始化逻辑
+     * 这个函数会在 assetLoader.js 彻底加载完资源后被自动调用
      */
     window.initCharSelectUI = function() {
       const validPlayers = AssetLoader.getValidPlayers();
@@ -143,9 +112,11 @@
       let currentIndex = 0;
       window.selectedPlayerKey = validPlayers[currentIndex]; // 暴露给 game.js
       
+      // 显示 UI 并应用第一张图
       imgPreview.src = AssetLoader.get(validPlayers[currentIndex]).src || 'assets/images/player/player.png';
       container.style.display = 'flex';
 
+      // 绑定左右切换事件
       btnPrev.addEventListener('click', () => {
         currentIndex = (currentIndex - 1 + validPlayers.length) % validPlayers.length;
         window.selectedPlayerKey = validPlayers[currentIndex];
@@ -160,33 +131,16 @@
     };
 
     /**
-     * 优化：屏幕方向管理逻辑（直接基于物理尺寸宽高判定，彻底解决物理竖屏时被电脑模式欺骗的问题）
+     * 屏幕方向自适应管理（不设任何强制拦截，竖屏、横屏均可流畅游玩）
      */
     (function() {
-      const tip = document.getElementById('rotate-tip');
-
-      function checkOrientation() {
-        if (!tip) return;
-        // 高度大于宽度，即为物理竖屏，直接强行显示遮罩，无法绕过
-        if (window.innerHeight > window.innerWidth) {
-          tip.classList.add('show');
-        } else {
-          tip.classList.remove('show');
-          if (window.gameInstance && typeof window.gameInstance._resize === 'function') {
-            window.gameInstance._resize();
-          }
+      function handleResize() {
+        if (window.gameInstance && typeof window.gameInstance._resize === 'function') {
+          window.gameInstance._resize();
         }
       }
-
-      window.addEventListener('resize', checkOrientation);
-      window.addEventListener('orientationchange', checkOrientation);
-      checkOrientation(); // 初始化执行
-
-      if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => {
-          console.log("浏览器不支持或未开启全屏，无法锁定方向");
-        });
-      }
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('orientationchange', handleResize);
     })();
   </script>
 </body>
